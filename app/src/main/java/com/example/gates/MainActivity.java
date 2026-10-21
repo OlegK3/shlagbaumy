@@ -14,6 +14,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.telecom.PhoneAccount;
+import android.telecom.PhoneAccountHandle;
 import android.telecom.TelecomManager;
 import android.text.Editable;
 import android.text.InputType;
@@ -26,9 +28,14 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
 
@@ -54,6 +61,9 @@ public class MainActivity extends Activity {
     private Button editBtn;
     private Button saveBtn;
     private EditText secField;
+    private RadioGroup simGroup;
+    private TextView simNote;
+    private String simKey = "";
     private EditText[] nameF = new EditText[GATES];
     private EditText[] inF = new EditText[GATES];
     private EditText[] outF = new EditText[GATES];
@@ -88,6 +98,7 @@ public class MainActivity extends Activity {
             outs[i] = prefs.getString("o" + i, "");
         }
         hangupSec = prefs.getInt("sec", 5);
+        simKey = prefs.getString("sim", "");
     }
 
     private void saveFromFields() {
@@ -109,6 +120,9 @@ public class MainActivity extends Activity {
         if (sec > 60) sec = 60;
         hangupSec = sec;
         e.putInt("sec", sec);
+        RadioButton checked = simGroup.findViewById(simGroup.getCheckedRadioButtonId());
+        if (checked != null) simKey = (String) checked.getTag();
+        e.putString("sim", simKey);
         e.apply();
     }
 
@@ -160,11 +174,77 @@ public class MainActivity extends Activity {
 
     private void askPermissions() {
         if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED
-                || checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
+                || checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{
                     Manifest.permission.CALL_PHONE,
-                    Manifest.permission.ANSWER_PHONE_CALLS}, REQ_PERMS);
+                    Manifest.permission.ANSWER_PHONE_CALLS,
+                    Manifest.permission.READ_PHONE_STATE}, REQ_PERMS);
         }
+    }
+
+    private static String keyOf(PhoneAccountHandle h) {
+        return h.getComponentName().flattenToString() + "|" + h.getId();
+    }
+
+    private List<PhoneAccountHandle> simAccounts() {
+        List<PhoneAccountHandle> res = new ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            return res;
+        }
+        try {
+            TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
+            if (tm != null) res.addAll(tm.getCallCapablePhoneAccounts());
+        } catch (SecurityException ignored) {
+        }
+        return res;
+    }
+
+    private PhoneAccountHandle chosenSim() {
+        if (simKey.isEmpty()) return null;
+        for (PhoneAccountHandle h : simAccounts()) {
+            if (keyOf(h).equals(simKey)) return h;
+        }
+        return null;
+    }
+
+    private void addSimOption(String title, String key) {
+        RadioButton rb = new RadioButton(this);
+        rb.setId(View.generateViewId());
+        rb.setText(title);
+        rb.setTextColor(cInk);
+        rb.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        rb.setTag(key);
+        simGroup.addView(rb, new RadioGroup.LayoutParams(MATCH, WRAP));
+    }
+
+    private void buildSimGroup() {
+        simGroup.removeAllViews();
+        List<PhoneAccountHandle> accounts = simAccounts();
+        TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
+        addSimOption("По умолчанию, как настроено в телефоне", "");
+        for (int k = 0; k < accounts.size(); k++) {
+            PhoneAccountHandle h = accounts.get(k);
+            String label = "";
+            try {
+                PhoneAccount acc = tm == null ? null : tm.getPhoneAccount(h);
+                if (acc != null && acc.getLabel() != null) label = acc.getLabel().toString();
+            } catch (SecurityException ignored) {
+            }
+            addSimOption("SIM " + (k + 1) + (label.isEmpty() ? "" : " — " + label), keyOf(h));
+        }
+        boolean found = false;
+        for (int k = 0; k < simGroup.getChildCount(); k++) {
+            RadioButton rb = (RadioButton) simGroup.getChildAt(k);
+            if (simKey.equals(rb.getTag())) {
+                rb.setChecked(true);
+                found = true;
+            }
+        }
+        if (!found) ((RadioButton) simGroup.getChildAt(0)).setChecked(true);
+        simNote.setText(accounts.isEmpty()
+                ? "Список SIM пуст. Разрешите приложению доступ к телефону в настройках Android."
+                : "");
     }
 
     private void call(String stored) {
@@ -180,7 +260,10 @@ public class MainActivity extends Activity {
 
     private void startCall(String number) {
         try {
-            startActivity(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + number)));
+            Intent intent = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + number));
+            PhoneAccountHandle sim = chosenSim();
+            if (sim != null) intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, sim);
+            startActivity(intent);
         } catch (SecurityException | android.content.ActivityNotFoundException e) {
             Toast.makeText(this, "Не удалось позвонить. Проверьте разрешение на звонки.", Toast.LENGTH_LONG).show();
             return;
@@ -205,6 +288,7 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQ_PERMS) return;
+        if (editing) buildSimGroup();
         String number = pendingNumber;
         pendingNumber = null;
         if (number != null
@@ -359,6 +443,12 @@ public class MainActivity extends Activity {
         secField = field(String.valueOf(hangupSec), "5", false);
         secField.setInputType(InputType.TYPE_CLASS_NUMBER);
         settingsBox.addView(secField, lp(MATCH, WRAP, 0f, dp(4)));
+        settingsBox.addView(text("SIM-КАРТА ДЛЯ ЗВОНКОВ", 12, cMuted, true), lp(MATCH, WRAP, 0f, dp(14)));
+        simGroup = new RadioGroup(this);
+        simGroup.setOrientation(RadioGroup.VERTICAL);
+        settingsBox.addView(simGroup, lp(MATCH, WRAP, 0f, dp(4)));
+        simNote = text("", 13, cMuted, false);
+        settingsBox.addView(simNote, lp(MATCH, WRAP, 0f, dp(4)));
         root.addView(settingsBox, lp(MATCH, WRAP, 0f, dp(12)));
 
         list = new LinearLayout(this);
@@ -392,7 +482,10 @@ public class MainActivity extends Activity {
                 : "Нажмите «Въезд» или «Выезд», телефон позвонит на номер шлагбаума.");
         settingsBox.setVisibility(editing ? View.VISIBLE : View.GONE);
         saveBtn.setVisibility(editing ? View.VISIBLE : View.GONE);
-        if (editing) secField.setText(String.valueOf(hangupSec));
+        if (editing) {
+            secField.setText(String.valueOf(hangupSec));
+            buildSimGroup();
+        }
         renderList();
     }
 
