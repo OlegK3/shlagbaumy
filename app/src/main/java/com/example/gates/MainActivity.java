@@ -34,12 +34,22 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
 
-    private static final int GATES = 5;
+    private static class Gate {
+        String name = "";
+        String address = "";
+        String in = "";
+        String out = "";
+    }
+
     private static final int REQ_PERMS = 1;
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -48,25 +58,28 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable hangup = this::endCallNow;
 
-    private final String[] names = new String[GATES];
-    private final String[] ins = new String[GATES];
-    private final String[] outs = new String[GATES];
+    private final List<Gate> gates = new ArrayList<>();
     private int hangupSec = 5;
+    private String simKey = "";
     private boolean editing = false;
+    private int confirmDelete = -1;
     private String pendingNumber = null;
 
+    private ScrollView scroll;
     private LinearLayout list;
     private LinearLayout settingsBox;
     private TextView hint;
+    private TextView emptyNote;
     private Button editBtn;
+    private Button addBtn;
     private Button saveBtn;
     private EditText secField;
     private RadioGroup simGroup;
     private TextView simNote;
-    private String simKey = "";
-    private EditText[] nameF = new EditText[GATES];
-    private EditText[] inF = new EditText[GATES];
-    private EditText[] outF = new EditText[GATES];
+    private final List<EditText> nameF = new ArrayList<>();
+    private final List<EditText> addrF = new ArrayList<>();
+    private final List<EditText> inF = new ArrayList<>();
+    private final List<EditText> outF = new ArrayList<>();
 
     private int cBg, cCard, cInk, cMuted, cLine, cGreen, cGreenInk, cOut, cOutInk, cField, cOff, cOffInk, cRed;
     private float density;
@@ -80,11 +93,11 @@ public class MainActivity extends Activity {
         load();
         buildUi();
 
-        boolean empty = true;
-        for (int i = 0; i < GATES; i++) {
-            if (!ins[i].isEmpty() || !outs[i].isEmpty()) empty = false;
+        boolean anyNumber = false;
+        for (Gate g : gates) {
+            if (!g.in.isEmpty() || !g.out.isEmpty()) anyNumber = true;
         }
-        editing = empty;
+        editing = !anyNumber && !prefs.contains("gates_json");
         applyMode();
         askPermissions();
     }
@@ -92,25 +105,70 @@ public class MainActivity extends Activity {
     // ---------- данные ----------
 
     private void load() {
-        for (int i = 0; i < GATES; i++) {
-            names[i] = prefs.getString("n" + i, "");
-            ins[i] = prefs.getString("i" + i, "");
-            outs[i] = prefs.getString("o" + i, "");
+        gates.clear();
+        String json = prefs.getString("gates_json", null);
+        if (json != null) {
+            try {
+                JSONArray a = new JSONArray(json);
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject o = a.getJSONObject(i);
+                    Gate g = new Gate();
+                    g.name = o.optString("name", "");
+                    g.address = o.optString("address", "");
+                    g.in = o.optString("in", "");
+                    g.out = o.optString("out", "");
+                    gates.add(g);
+                }
+            } catch (JSONException ignored) {
+            }
+        } else {
+            // перенос данных из первой версии (5 шлагбаумов)
+            for (int i = 0; i < 5; i++) {
+                Gate g = new Gate();
+                g.name = prefs.getString("n" + i, "");
+                g.in = prefs.getString("i" + i, "");
+                g.out = prefs.getString("o" + i, "");
+                if (!g.name.isEmpty() || !g.in.isEmpty() || !g.out.isEmpty()) gates.add(g);
+            }
+            if (gates.isEmpty()) gates.add(new Gate());
         }
         hangupSec = prefs.getInt("sec", 5);
         simKey = prefs.getString("sim", "");
     }
 
-    private void saveFromFields() {
-        SharedPreferences.Editor e = prefs.edit();
-        for (int i = 0; i < GATES; i++) {
-            names[i] = nameF[i].getText().toString().trim();
-            ins[i] = cleanNumber(inF[i].getText().toString());
-            outs[i] = cleanNumber(outF[i].getText().toString());
-            e.putString("n" + i, names[i]);
-            e.putString("i" + i, ins[i]);
-            e.putString("o" + i, outs[i]);
+    /** Переносит введённое в поля обратно в список шлагбаумов. */
+    private void collectFields() {
+        if (!editing) return;
+        for (int i = 0; i < gates.size() && i < nameF.size(); i++) {
+            Gate g = gates.get(i);
+            g.name = nameF.get(i).getText().toString().trim();
+            g.address = addrF.get(i).getText().toString().trim();
+            g.in = inF.get(i).getText().toString();
+            g.out = outF.get(i).getText().toString();
         }
+    }
+
+    private void saveAll() {
+        collectFields();
+        for (Gate g : gates) {
+            g.in = cleanNumber(g.in);
+            g.out = cleanNumber(g.out);
+        }
+        gates.removeIf(g -> g.name.isEmpty() && g.address.isEmpty() && g.in.isEmpty() && g.out.isEmpty());
+
+        JSONArray a = new JSONArray();
+        for (Gate g : gates) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("name", g.name);
+                o.put("address", g.address);
+                o.put("in", g.in);
+                o.put("out", g.out);
+            } catch (JSONException ignored) {
+            }
+            a.put(o);
+        }
+
         int sec = 5;
         try {
             sec = Integer.parseInt(secField.getText().toString().trim());
@@ -119,11 +177,15 @@ public class MainActivity extends Activity {
         if (sec < 0) sec = 0;
         if (sec > 60) sec = 60;
         hangupSec = sec;
-        e.putInt("sec", sec);
+
         RadioButton checked = simGroup.findViewById(simGroup.getCheckedRadioButtonId());
         if (checked != null) simKey = (String) checked.getTag();
-        e.putString("sim", simKey);
-        e.apply();
+
+        prefs.edit()
+                .putString("gates_json", a.toString())
+                .putInt("sec", sec)
+                .putString("sim", simKey)
+                .apply();
     }
 
     // ---------- номера ----------
@@ -406,14 +468,14 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(cBg);
-        sv.setFillViewport(true);
+        scroll = new ScrollView(this);
+        scroll.setBackgroundColor(cBg);
+        scroll.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(16), dp(16), dp(24));
-        sv.addView(root, new ViewGroup.LayoutParams(MATCH, WRAP));
+        scroll.addView(root, new ViewGroup.LayoutParams(MATCH, WRAP));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -428,7 +490,13 @@ public class MainActivity extends Activity {
         editBtn.setBackground(rect(Color.TRANSPARENT, cInk, 8));
         editBtn.setStateListAnimator(null);
         editBtn.setOnClickListener(v -> {
-            editing = !editing;
+            if (editing) {
+                load(); // «Отмена»: вернуть сохранённое
+                editing = false;
+            } else {
+                editing = true;
+            }
+            confirmDelete = -1;
             applyMode();
         });
         header.addView(editBtn, new LinearLayout.LayoutParams(WRAP, dp(44)));
@@ -451,9 +519,33 @@ public class MainActivity extends Activity {
         settingsBox.addView(simNote, lp(MATCH, WRAP, 0f, dp(4)));
         root.addView(settingsBox, lp(MATCH, WRAP, 0f, dp(12)));
 
+        emptyNote = text("Шлагбаумов пока нет. Нажмите «Добавить шлагбаум» ниже.", 15, cMuted, false);
+        root.addView(emptyNote, lp(MATCH, WRAP, 0f, dp(16)));
+
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list, lp(MATCH, WRAP, 0f, dp(4)));
+
+        addBtn = new Button(this);
+        addBtn.setText("+ Добавить шлагбаум");
+        addBtn.setAllCaps(false);
+        addBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        addBtn.setTextColor(cInk);
+        addBtn.setBackground(rect(Color.TRANSPARENT, cInk, 10));
+        addBtn.setStateListAnimator(null);
+        addBtn.setOnClickListener(v -> {
+            collectFields();
+            gates.add(new Gate());
+            confirmDelete = -1;
+            if (!editing) {
+                editing = true;
+                applyMode();
+            } else {
+                renderList();
+            }
+            if (!nameF.isEmpty()) nameF.get(nameF.size() - 1).requestFocus();
+        });
+        root.addView(addBtn, lp(MATCH, dp(52), 0f, dp(14)));
 
         saveBtn = new Button(this);
         saveBtn.setText("СОХРАНИТЬ");
@@ -463,16 +555,17 @@ public class MainActivity extends Activity {
         saveBtn.setBackground(rect(cGreen, 0, 10));
         saveBtn.setStateListAnimator(null);
         saveBtn.setOnClickListener(v -> {
-            saveFromFields();
+            saveAll();
             editing = false;
+            confirmDelete = -1;
             applyMode();
         });
-        root.addView(saveBtn, lp(MATCH, dp(54), 0f, dp(14)));
+        root.addView(saveBtn, lp(MATCH, dp(54), 0f, dp(10)));
 
-        TextView foot = text("Чтобы звонок сбрасывался сам, разрешите приложению звонки и управление вызовами. Номера хранятся на этом телефоне.", 13, cMuted, false);
+        TextView foot = text("Чтобы звонок сбрасывался сам, разрешите приложению звонки и управление вызовами. Данные хранятся на этом телефоне.", 13, cMuted, false);
         root.addView(foot, lp(MATCH, WRAP, 0f, dp(16)));
 
-        setContentView(sv);
+        setContentView(scroll);
     }
 
     private void applyMode() {
@@ -490,13 +583,21 @@ public class MainActivity extends Activity {
     }
 
     private void renderList() {
+        nameF.clear();
+        addrF.clear();
+        inF.clear();
+        outF.clear();
         list.removeAllViews();
-        for (int i = 0; i < GATES; i++) {
+        emptyNote.setVisibility(gates.isEmpty() ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < gates.size(); i++) {
             list.addView(gateCard(i), lp(MATCH, WRAP, 0f, dp(14)));
         }
     }
 
     private View gateCard(int i) {
+        final int idx = i;
+        Gate g = gates.get(i);
+
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(rect(cCard, cLine, 10));
@@ -518,32 +619,72 @@ public class MainActivity extends Activity {
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setOrientation(LinearLayout.HORIZONTAL);
-        titleRow.setGravity(Gravity.BOTTOM);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
         titleRow.addView(text(String.valueOf(i + 1), 26, cInk, true));
-        if (!editing && !names[i].isEmpty()) {
-            TextView n = text(names[i].toUpperCase(), 18, cMuted, true);
-            n.setPadding(dp(10), 0, 0, dp(2));
-            titleRow.addView(n);
+        if (editing) {
+            TextView lbl = text("ШЛАГБАУМ", 16, cMuted, true);
+            lbl.setPadding(dp(10), 0, 0, 0);
+            titleRow.addView(lbl);
+        } else if (!g.name.isEmpty() || !g.address.isEmpty()) {
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding(dp(12), 0, 0, 0);
+            if (!g.name.isEmpty()) {
+                info.addView(text(g.name.toUpperCase(), 18, cInk, true));
+            }
+            if (!g.address.isEmpty()) {
+                info.addView(text(g.address, 14, cMuted, false));
+            }
+            titleRow.addView(info, new LinearLayout.LayoutParams(0, WRAP, 1f));
         }
         body.addView(titleRow, new LinearLayout.LayoutParams(MATCH, WRAP));
 
         if (editing) {
             body.addView(text("НАЗВАНИЕ", 12, cMuted, true), lp(MATCH, WRAP, 0f, dp(10)));
-            nameF[i] = field(names[i], "Например, Главный", false);
-            body.addView(nameF[i], lp(MATCH, WRAP, 0f, dp(4)));
+            EditText n = field(g.name, "Например, Главный", false);
+            nameF.add(n);
+            body.addView(n, lp(MATCH, WRAP, 0f, dp(4)));
+
+            body.addView(text("АДРЕС", 12, cMuted, true), lp(MATCH, WRAP, 0f, dp(10)));
+            EditText a = field(g.address, "Например, ул. Ленина, 5", false);
+            addrF.add(a);
+            body.addView(a, lp(MATCH, WRAP, 0f, dp(4)));
+
             body.addView(text("НОМЕР ВЪЕЗДА", 12, cMuted, true), lp(MATCH, WRAP, 0f, dp(10)));
-            inF[i] = field(ins[i], "+7 900 123-45-67", true);
-            body.addView(inF[i], lp(MATCH, WRAP, 0f, dp(4)));
+            EditText fi = field(g.in, "+7 900 123-45-67", true);
+            inF.add(fi);
+            body.addView(fi, lp(MATCH, WRAP, 0f, dp(4)));
+
             body.addView(text("НОМЕР ВЫЕЗДА", 12, cMuted, true), lp(MATCH, WRAP, 0f, dp(10)));
-            outF[i] = field(outs[i], "+7 900 123-45-67", true);
-            body.addView(outF[i], lp(MATCH, WRAP, 0f, dp(4)));
+            EditText fo = field(g.out, "+7 900 123-45-67", true);
+            outF.add(fo);
+            body.addView(fo, lp(MATCH, WRAP, 0f, dp(4)));
+
+            Button del = new Button(this);
+            del.setText(confirmDelete == idx ? "Точно удалить? Нажмите ещё раз" : "Удалить шлагбаум");
+            del.setAllCaps(false);
+            del.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            del.setTextColor(cRed);
+            del.setBackground(rect(Color.TRANSPARENT, cRed, 8));
+            del.setStateListAnimator(null);
+            del.setOnClickListener(v -> {
+                collectFields();
+                if (confirmDelete == idx) {
+                    gates.remove(idx);
+                    confirmDelete = -1;
+                } else {
+                    confirmDelete = idx;
+                }
+                renderList();
+            });
+            body.addView(del, lp(MATCH, dp(46), 0f, dp(14)));
         } else {
             LinearLayout pair = new LinearLayout(this);
             pair.setOrientation(LinearLayout.HORIZONTAL);
-            pair.addView(side("ВЪЕЗД", ins[i], true), new LinearLayout.LayoutParams(0, WRAP, 1f));
+            pair.addView(side("ВЪЕЗД", g.in, true), new LinearLayout.LayoutParams(0, WRAP, 1f));
             View gap = new View(this);
             pair.addView(gap, new LinearLayout.LayoutParams(dp(10), 1));
-            pair.addView(side("ВЫЕЗД", outs[i], false), new LinearLayout.LayoutParams(0, WRAP, 1f));
+            pair.addView(side("ВЫЕЗД", g.out, false), new LinearLayout.LayoutParams(0, WRAP, 1f));
             body.addView(pair, lp(MATCH, WRAP, 0f, dp(12)));
         }
         return card;
