@@ -51,6 +51,7 @@ public class MainActivity extends Activity {
     }
 
     private static final int REQ_PERMS = 1;
+    private static final String PRIVACY_URL = "https://olegk3.github.io/shlagbaumy/privacy.html";
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
 
@@ -564,6 +565,18 @@ public class MainActivity extends Activity {
 
         TextView foot = text("Чтобы звонок сбрасывался сам, разрешите приложению звонки и управление вызовами. Данные хранятся на этом телефоне.", 13, cMuted, false);
         root.addView(foot, lp(MATCH, WRAP, 0f, dp(16)));
+
+        TextView privacy = text("Политика конфиденциальности", 14, cMuted, false);
+        privacy.setPaintFlags(privacy.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        privacy.setPadding(0, dp(10), 0, dp(10));
+        privacy.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)));
+            } catch (android.content.ActivityNotFoundException e) {
+                Toast.makeText(this, "Не найден браузер для открытия страницы", Toast.LENGTH_LONG).show();
+            }
+        });
+        root.addView(privacy, lp(WRAP, WRAP, 0f, dp(6)));
 
         setContentView(scroll);
     }
