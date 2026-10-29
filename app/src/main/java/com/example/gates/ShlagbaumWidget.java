@@ -34,6 +34,7 @@ public class ShlagbaumWidget extends AppWidgetProvider {
         AppWidgetManager mgr = AppWidgetManager.getInstance(app);
         int[] ids = mgr.getAppWidgetIds(new ComponentName(app, ShlagbaumWidget.class));
         for (int id : ids) mgr.updateAppWidget(id, build(app, id));
+        ShlagbaumWidget2.refreshAll(app);
     }
 
     static RemoteViews build(Context ctx, int widgetId) {
@@ -58,14 +59,14 @@ public class ShlagbaumWidget extends AppWidgetProvider {
         return rv;
     }
 
-    private static void bindButton(Context ctx, RemoteViews rv, int widgetId, String gateId,
+    static void bindButton(Context ctx, RemoteViews rv, int widgetId, String gateId,
                                    String dir, int viewId, int slot, JSONObject g) {
         if (GateStore.dial(g.optString(dir, "")).isEmpty()) {
             disable(rv, viewId);
             return;
         }
         Intent i = new Intent(ctx, CallActivity.class);
-        i.setData(Uri.parse("shlagbaum://call/" + widgetId + "/" + dir));
+        i.setData(Uri.parse("shlagbaum://call/" + widgetId + "/" + slot + "/" + dir));
         i.putExtra(CallActivity.EXTRA_GATE, gateId);
         i.putExtra(CallActivity.EXTRA_DIR, dir);
         PendingIntent pi = PendingIntent.getActivity(ctx, widgetId * 3 + slot, i,
@@ -73,7 +74,7 @@ public class ShlagbaumWidget extends AppWidgetProvider {
         rv.setOnClickPendingIntent(viewId, pi);
     }
 
-    private static void disable(RemoteViews rv, int viewId) {
+    static void disable(RemoteViews rv, int viewId) {
         rv.setInt(viewId, "setBackgroundResource", R.drawable.widget_btn_off);
         rv.setTextColor(viewId, android.graphics.Color.parseColor("#7B837D"));
     }
