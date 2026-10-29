@@ -44,6 +44,7 @@ import java.util.List;
 public class MainActivity extends Activity {
 
     private static class Gate {
+        String id = java.util.UUID.randomUUID().toString();
         String name = "";
         String address = "";
         String in = "";
@@ -91,6 +92,7 @@ public class MainActivity extends Activity {
         density = getResources().getDisplayMetrics().density;
         initColors();
         prefs = getSharedPreferences("gates", MODE_PRIVATE);
+        GateStore.ensureIds(this);
         load();
         buildUi();
 
@@ -114,6 +116,8 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < a.length(); i++) {
                     JSONObject o = a.getJSONObject(i);
                     Gate g = new Gate();
+                    String savedId = o.optString("id", "");
+                    if (!savedId.isEmpty()) g.id = savedId;
                     g.name = o.optString("name", "");
                     g.address = o.optString("address", "");
                     g.in = o.optString("in", "");
@@ -161,6 +165,7 @@ public class MainActivity extends Activity {
         for (Gate g : gates) {
             JSONObject o = new JSONObject();
             try {
+                o.put("id", g.id);
                 o.put("name", g.name);
                 o.put("address", g.address);
                 o.put("in", g.in);
@@ -187,6 +192,7 @@ public class MainActivity extends Activity {
                 .putInt("sec", sec)
                 .putString("sim", simKey)
                 .apply();
+        ShlagbaumWidget.refreshAll(this);
     }
 
     // ---------- номера ----------

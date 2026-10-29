@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_bg">#1A1D1B</color>
+
+    <!-- виджет, светлая тема -->
+    <color name="w_bg">#F7F8F6</color>
+    <color name="w_ink">#1A1D1B</color>
+    <color name="w_muted">#5D645F</color>
+    <color name="w_green">#1C7A4B</color>
+    <color name="w_green_ink">#FFFFFF</color>
+    <color name="w_dark">#1A1D1B</color>
+    <color name="w_dark_ink">#FFFFFF</color>
+    <color name="w_off">#DDE1DC</color>
+    <color name="w_off_ink">#7B837D</color>
 </resources>
