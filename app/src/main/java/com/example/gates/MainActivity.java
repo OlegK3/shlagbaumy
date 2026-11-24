@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
     private Button addBtn;
     private Button saveBtn;
     private BannerAdView bannerAd;
+    private LinearLayout bannerBox;
     private EditText secField;
     private RadioGroup simGroup;
     private TextView simNote;
@@ -576,9 +577,6 @@ public class MainActivity extends Activity {
         });
         root.addView(saveBtn, lp(MATCH, dp(54), 0f, dp(10)));
 
-        bannerAd = buildBanner();
-        root.addView(bannerAd, lp(MATCH, WRAP, 0f, dp(18)));
-
         TextView foot = text("Чтобы звонок сбрасывался сам, разрешите приложению звонки и управление вызовами. Данные хранятся на этом телефоне.", 13, cMuted, false);
         root.addView(foot, lp(MATCH, WRAP, 0f, dp(16)));
 
@@ -594,7 +592,19 @@ public class MainActivity extends Activity {
         });
         root.addView(privacy, lp(WRAP, WRAP, 0f, dp(6)));
 
-        setContentView(scroll);
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(cBg);
+        screen.addView(scroll, new LinearLayout.LayoutParams(MATCH, 0, 1f));
+
+        bannerBox = new LinearLayout(this);
+        bannerBox.setGravity(Gravity.CENTER_HORIZONTAL);
+        bannerBox.setPadding(dp(16), dp(8), dp(16), dp(6));
+        bannerBox.setBackgroundColor(cBg);
+        bannerAd = buildBanner();
+        bannerBox.addView(bannerAd, new LinearLayout.LayoutParams(WRAP, WRAP));
+        screen.addView(bannerBox, new LinearLayout.LayoutParams(MATCH, WRAP));
+        setContentView(screen);
     }
 
     private BannerAdView buildBanner() {
@@ -623,7 +633,7 @@ public class MainActivity extends Activity {
                 : "Нажмите «Въезд» или «Выезд», телефон позвонит на номер шлагбаума.");
         settingsBox.setVisibility(editing ? View.VISIBLE : View.GONE);
         saveBtn.setVisibility(editing ? View.VISIBLE : View.GONE);
-        bannerAd.setVisibility(editing ? View.GONE : View.VISIBLE);
+        bannerBox.setVisibility(editing ? View.GONE : View.VISIBLE);
         if (editing) {
             secField.setText(String.valueOf(hangupSec));
             buildSimGroup();
