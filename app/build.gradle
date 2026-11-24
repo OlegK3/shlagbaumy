@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.example.gates'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId 'ru.olegk3.shlagbaum'
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName '1.1.0'
+        versionCode 3
+        versionName '1.2.0'
     }
 
     signingConfigs {
@@ -34,4 +34,8 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation 'com.yandex.android:mobileads:8.6.0'
 }

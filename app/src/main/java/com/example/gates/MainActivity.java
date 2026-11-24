@@ -34,6 +34,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.yandex.mobile.ads.banner.BannerAdSize;
+import com.yandex.mobile.ads.banner.BannerAdView;
+import com.yandex.mobile.ads.common.AdRequest;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -52,6 +56,8 @@ public class MainActivity extends Activity {
     }
 
     private static final int REQ_PERMS = 1;
+    // Рекламный блок Яндекса (баннер).
+    private static final String AD_UNIT_ID = "R-M-20491118-1";
     private static final String PRIVACY_URL = "https://olegk3.github.io/shlagbaumy/privacy.html";
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -75,6 +81,7 @@ public class MainActivity extends Activity {
     private Button editBtn;
     private Button addBtn;
     private Button saveBtn;
+    private BannerAdView bannerAd;
     private EditText secField;
     private RadioGroup simGroup;
     private TextView simNote;
@@ -569,6 +576,9 @@ public class MainActivity extends Activity {
         });
         root.addView(saveBtn, lp(MATCH, dp(54), 0f, dp(10)));
 
+        bannerAd = buildBanner();
+        root.addView(bannerAd, lp(MATCH, WRAP, 0f, dp(18)));
+
         TextView foot = text("Чтобы звонок сбрасывался сам, разрешите приложению звонки и управление вызовами. Данные хранятся на этом телефоне.", 13, cMuted, false);
         root.addView(foot, lp(MATCH, WRAP, 0f, dp(16)));
 
@@ -587,6 +597,25 @@ public class MainActivity extends Activity {
         setContentView(scroll);
     }
 
+    private BannerAdView buildBanner() {
+        BannerAdView banner = new BannerAdView(this);
+        int screenDp = Math.round(getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density);
+        int widthDp = Math.max(280, screenDp - 32);
+        banner.setAdSize(BannerAdSize.sticky(this, widthDp));
+        banner.loadAd(new AdRequest.Builder(AD_UNIT_ID).build());
+        return banner;
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (bannerAd != null) {
+            bannerAd.destroy();
+            bannerAd = null;
+        }
+        super.onDestroy();
+    }
+
     private void applyMode() {
         editBtn.setText(editing ? "Отмена" : "Изменить");
         hint.setText(editing
@@ -594,6 +623,7 @@ public class MainActivity extends Activity {
                 : "Нажмите «Въезд» или «Выезд», телефон позвонит на номер шлагбаума.");
         settingsBox.setVisibility(editing ? View.VISIBLE : View.GONE);
         saveBtn.setVisibility(editing ? View.VISIBLE : View.GONE);
+        bannerAd.setVisibility(editing ? View.GONE : View.VISIBLE);
         if (editing) {
             secField.setText(String.valueOf(hangupSec));
             buildSimGroup();
